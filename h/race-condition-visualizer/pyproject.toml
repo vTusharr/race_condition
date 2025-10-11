@@ -1,0 +1,11 @@
+[project]
+name = "race-condition-visualizer"
+version = "0.1.0"
+description = "Graph-theoretic visualization of race conditions and Peterson's algorithm"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.10.7",
+    "networkx>=3.5",
+    "numpy>=2.3.3",
+]
