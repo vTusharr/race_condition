@@ -157,8 +157,6 @@ increment_counter:
     movl    counter(%rip), %eax      # Load counter from memory into EAX register
     movl    %eax, -8(%rbp)           # Store in local variable 'temp'
     
-    # Simulate context switch
-    call    usleep
     
     # C code: temp = temp + 1;
     addl    $1, -8(%rbp)             # Increment local temp
@@ -261,7 +259,7 @@ gcc -O0 -g race_condition_example.c -o race_condition.exe -lpthread
 # Compile Peterson's algorithm
 gcc -O0 -g peterson_algorithm.c -o peterson.exe -lpthread
 
-# Run it (always correct!)
+# Run 
 ./peterson.exe
 ```
 
@@ -279,11 +277,10 @@ gcc -O0 -S peterson_algorithm.c -o peterson.s
 
 While Peterson's algorithm is an elegant theoretical solution, modern applications use **mutex** (mutual exclusion locks) as the practical, production-grade approach to preventing race conditions.
 
-### Mutex: The Practical Approach
 
 A mutex is a synchronization primitive that ensures only one thread can access a critical section at a time. Unlike Peterson's algorithm, the mutex implementation is typically handled by the operating system or standard library, abstracting away low-level synchronization logic.
 
-#### C Code with POSIX Mutex:
+#### C Code w
 ```c
 #include <pthread.h>
 
@@ -309,7 +306,7 @@ void* mutex_process(void* arg) {
 }
 ```
 
-**Result**: Always counter=200000. Simple, intuitive, and correct!
+**Result**:  counter=200000.
 
 #### C Code with C11 Mutex (Optional):
 ```c
@@ -370,77 +367,7 @@ mutex_lock:
 - Kernel scheduler manages fairness and priority
 - No wasted CPU cycles on spinning
 
-### Modern Approaches Beyond Mutex
-
-#### 1. **C++11 std::mutex and std::lock_guard** (RAII Pattern)
-```cpp
-#include <mutex>
-
-std::mutex counter_mutex;
-long counter = 0;
-
-void increment_counter() {
-    // Automatic unlock when lock_guard goes out of scope
-    std::lock_guard<std::mutex> lock(counter_mutex);
-    long temp = counter;
-    temp = temp + 1;
-    counter = temp;
-}
-```
-
-**Benefit**: Automatic cleanup even if exceptions occur.
-
-#### 2. **Read-Write Locks (pthread_rwlock)**
-```c
-pthread_rwlock_t data_lock = PTHREAD_RWLOCK_INITIALIZER;
-
-// Multiple readers can access simultaneously
-pthread_rwlock_rdlock(&data_lock);
-// Read shared data
-pthread_rwlock_unlock(&data_lock);
-
-// Only one writer at a time
-pthread_rwlock_wrlock(&data_lock);
-// Write shared data
-pthread_rwlock_unlock(&data_lock);
-```
-
-**Use case**: When data is read-heavy but occasionally written.
-
-#### 3. **Semaphores (Counting Mutex)**
-```c
-sem_t semaphore;
-sem_init(&semaphore, 0, 1);  // Binary semaphore (like mutex)
-
-sem_wait(&semaphore);        // Decrement; if 0, block
-// Critical section
-sem_post(&semaphore);        // Increment; wake one waiting thread
-```
-
-**Use case**: Resource pooling (e.g., limit concurrent database connections).
-
-#### 4. **Condition Variables (Signal-Wait Pattern)**
-```c
-pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-int ready = 0;
-
-// Producer thread
-pthread_mutex_lock(&mutex);
-ready = 1;
-pthread_cond_broadcast(&condition);  // Wake all waiting threads
-pthread_mutex_unlock(&mutex);
-
-// Consumer thread
-pthread_mutex_lock(&mutex);
-while (!ready) {
-    pthread_cond_wait(&condition, &mutex);  // Wait for signal
-}
-// Use shared resource
-pthread_mutex_unlock(&mutex);
-```
-
-**Use case**: Producer-consumer patterns, thread coordination.
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 ### Problem Resolution Summary
 
@@ -487,5 +414,3 @@ pthread_mutex_unlock(&mutex);
 - Dijkstra, E. W. (1965). "Solution of a problem in concurrent programming control"
 - Lamport, L. (1974). "A New Solution of Dijkstra's Concurrent Programming Problem"
 - POSIX Threads (pthreads) Programming: https://computing.llnl.gov/tutorials/pthreads/
-- The Linux Programming Interface: Michael Kerrisk (2010)
-- C++ Concurrency in Action: Anthony Williams (2nd Edition, 2019)
