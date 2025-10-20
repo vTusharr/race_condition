@@ -1,5 +1,3 @@
-
-
 **Graph-Theoretic and Logical Modeling of Race Condition Avoidance in Concurrent Scheduling**
 
 ## Overview
@@ -9,7 +7,7 @@ This project demonstrates race conditions and their solutions through deep techn
 - **Instruction Analysis**: Shows how C code translates to machine instructions and where races occur
 - **Modern Architecture Challenges**: CPU pipelining, instruction reordering, cache coherency issues
 - **C11 Atomics Solution**: Why atomics and memory barriers are essential on modern CPUs
-
+- **Mutex Solutions**: Modern practical synchronization primitives for real-world applications
 - **Formal Verification**: Visual proof that Peterson's algorithm guarantees mutual exclusion
 
 ## Core Concepts
@@ -87,9 +85,6 @@ void* peterson_process(void* arg) {
 
 **Result**: Always counter=200000 (100000 iterations × 2 threads). No lost updates!
 
-
-
-
 ## Installation
 
 ### Prerequisites
@@ -107,7 +102,8 @@ pip install -r requirements.txt
 ```
 
 ### Install GCC 
-##  Usage
+
+## Usage
 
 ### Run Main Application
 
@@ -187,7 +183,7 @@ Time | Thread 1                    | Thread 2                    | counter value
   5  |                            | movl %eax, counter (=1)     | 1 ← WRONG!
 ```
 
-### Peterson's Algorithm in Assembly
+### Peterson's Algorithm
 
 From `peterson.s` (lines 119-130):
 ```asm
@@ -249,8 +245,6 @@ The visualizations use **directed graphs** where:
 - Proof by exhaustion: all reachable states are safe
 - Visual proof of correctness!
 
-
-
 ### Compile and Run C Code
 
 The C examples auto-compile when you run `main.py`. Or manually:
@@ -281,44 +275,217 @@ gcc -O0 -S peterson_algorithm.c -o peterson.s
 # View the .s files to see how counter++ becomes multiple instructions
 ```
 
+## Modern Synchronization: Mutex Solutions
 
+While Peterson's algorithm is an elegant theoretical solution, modern applications use **mutex** (mutual exclusion locks) as the practical, production-grade approach to preventing race conditions.
 
-INSIGHT GAINED:
-1. **Concurrency Problems**: Real-world race conditions with actual C code
-2. **Modern CPU Architecture**: Instruction reordering, cache coherency, store buffers
-3. **Why Atomics Matter**: Compiler optimizations, memory barriers, cache invalidation
-4. **Assembly-Level Understanding**: How C translates to machine code and where races occur
-5. **Peterson's Algorithm**: Classical synchronization solution and why it's hard on modern hardware
-6. **C11 Atomics**: `_Atomic`, `memory_order_seq_cst`, and the `xchg` instruction
-7. **Formal Methods**: Using state graphs to prove correctness
-8. **Visual Proofs**: Graph theory as proof by exhaustive state exploration
+### Mutex: The Practical Approach
 
-### Problems We Solved on Modern Architecture
+A mutex is a synchronization primitive that ensures only one thread can access a critical section at a time. Unlike Peterson's algorithm, the mutex implementation is typically handled by the operating system or standard library, abstracting away low-level synchronization logic.
 
-| Challenge | Problem | Our Solution |
-|-----------|---------|--------------|
-| **CPU Pipelining** | Out-of-order execution reorders flag/turn writes | `memory_order_seq_cst` prevents reordering |
-| **Compiler Optimization** | Aggressive optimizations cache variables in registers | `_Atomic` qualifier forces memory access |
-| **Store Buffers** | Writes queued in buffer, not immediately visible | `xchg` with LOCK flushes buffers |
-| **Cache Coherency** | Each core has separate L1/L2 cache | Atomic operations invalidate other caches |
-| **Memory Visibility** | Changes on one core not visible to others | Memory barriers ensure cross-core visibility |
-| **Instruction Reordering** | CPU executes in different order than code | Sequential consistency guarantees order |
+#### C Code with POSIX Mutex:
+```c
+#include <pthread.h>
 
-**Historical Note**: Peterson's algorithm was designed in 1981 for simpler hardware. Modern CPUs require atomics and memory barriers that didn't exist then!
+pthread_mutex_t counter_mutex = PTHREAD_MUTEX_INITIALIZER;
+long counter = 0;
 
-##  Troubleshooting
+void* mutex_process(void* arg) {
+    int id = *((int*)arg);
+    
+    for (int i = 0; i < ITERATIONS/2; i++) {
+        // === LOCK ACQUISITION ===
+        pthread_mutex_lock(&counter_mutex);
+        
+        // === CRITICAL SECTION (PROTECTED) ===
+        long temp = counter;
+        temp = temp + 1;
+        counter = temp;
+        // === END CRITICAL SECTION ===
+        
+        // === LOCK RELEASE ===
+        pthread_mutex_unlock(&counter_mutex);
+    }
+}
+```
 
+**Result**: Always counter=200000. Simple, intuitive, and correct!
 
+#### C Code with C11 Mutex (Optional):
+```c
+#include <threads.h>
 
-**GCC not found:**
-- Windows: Install MinGW-w64
-- Linux/Mac: `sudo apt install gcc` or `brew install gcc`
+mtx_t counter_mutex;
+long counter = 0;
+
+void* c11_mutex_process(void* arg) {
+    int id = *((int*)arg);
+    
+    for (int i = 0; i < ITERATIONS/2; i++) {
+        mtx_lock(&counter_mutex);
+        
+        // Critical section
+        long temp = counter;
+        temp = temp + 1;
+        counter = temp;
+        
+        mtx_unlock(&counter_mutex);
+    }
+}
+```
+
+### Why Mutex Over Peterson's Algorithm?
+
+| Aspect | Peterson's Algorithm | Mutex |
+|--------|---------------------|-------|
+| **Ease of Use** | Requires manual synchronization logic | Single `lock()`/`unlock()` calls |
+| **Scalability** | Designed for 2 processes only | Works for unlimited threads |
+| **Fairness** | May starve threads (priority issues) | OS scheduler ensures fairness |
+| **Performance** | Busy-wait (wastes CPU cycles) | OS blocks waiting threads (sleeps) |
+| **Debugging** | Complex state to track manually | Clear, straightforward semantics |
+| **Modern CPUs** | Requires explicit memory barriers | Handled by mutex implementation |
+| **Maintenance** | Error-prone, difficult to verify | Proven, battle-tested code |
+
+### Mutex 
+
+When `pthread_mutex_lock()` is called, it typically translates to:
+```asm
+# Simplified: actual implementation is complex
+mutex_lock:
+    mov     $1, %eax                ; Prepare lock value
+.L_try_lock:
+    cmpxchg %eax, (%rdi)            ; ATOMIC: Compare and exchange
+    jne     .L_contended            ; If locked, thread must wait
+    ret                              ; Lock acquired!
+    
+.L_contended:
+    # Thread is blocked (sleeps) - OS handles scheduling
+    syscall SYS_futex               ; Call kernel for efficient blocking
+    jmp     .L_try_lock             ; Retry after woken up
+```
+
+**Key advantages**:
+- Uses `cmpxchg` (atomic compare-and-swap) for efficient locking
+- Threads don't busy-wait; they sleep and are awakened by OS
+- Kernel scheduler manages fairness and priority
+- No wasted CPU cycles on spinning
+
+### Modern Approaches Beyond Mutex
+
+#### 1. **C++11 std::mutex and std::lock_guard** (RAII Pattern)
+```cpp
+#include <mutex>
+
+std::mutex counter_mutex;
+long counter = 0;
+
+void increment_counter() {
+    // Automatic unlock when lock_guard goes out of scope
+    std::lock_guard<std::mutex> lock(counter_mutex);
+    long temp = counter;
+    temp = temp + 1;
+    counter = temp;
+}
+```
+
+**Benefit**: Automatic cleanup even if exceptions occur.
+
+#### 2. **Read-Write Locks (pthread_rwlock)**
+```c
+pthread_rwlock_t data_lock = PTHREAD_RWLOCK_INITIALIZER;
+
+// Multiple readers can access simultaneously
+pthread_rwlock_rdlock(&data_lock);
+// Read shared data
+pthread_rwlock_unlock(&data_lock);
+
+// Only one writer at a time
+pthread_rwlock_wrlock(&data_lock);
+// Write shared data
+pthread_rwlock_unlock(&data_lock);
+```
+
+**Use case**: When data is read-heavy but occasionally written.
+
+#### 3. **Semaphores (Counting Mutex)**
+```c
+sem_t semaphore;
+sem_init(&semaphore, 0, 1);  // Binary semaphore (like mutex)
+
+sem_wait(&semaphore);        // Decrement; if 0, block
+// Critical section
+sem_post(&semaphore);        // Increment; wake one waiting thread
+```
+
+**Use case**: Resource pooling (e.g., limit concurrent database connections).
+
+#### 4. **Condition Variables (Signal-Wait Pattern)**
+```c
+pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int ready = 0;
+
+// Producer thread
+pthread_mutex_lock(&mutex);
+ready = 1;
+pthread_cond_broadcast(&condition);  // Wake all waiting threads
+pthread_mutex_unlock(&mutex);
+
+// Consumer thread
+pthread_mutex_lock(&mutex);
+while (!ready) {
+    pthread_cond_wait(&condition, &mutex);  // Wait for signal
+}
+// Use shared resource
+pthread_mutex_unlock(&mutex);
+```
+
+**Use case**: Producer-consumer patterns, thread coordination.
+
+### Problem Resolution Summary
+
+| Challenge | Peterson's Solution | Mutex Solution |
+|-----------|---------------------|----------------|
+| **CPU Pipelining** | `memory_order_seq_cst` | Handled by kernel/library |
+| **Compiler Optimization** | `_Atomic` qualifier | Mutex code is not optimized away |
+| **Store Buffers** | `xchg` with LOCK | OS ensures visibility |
+| **Cache Coherency** | Atomic operations | Kernel synchronization |
+| **Memory Visibility** | Memory barriers | Implicit in lock/unlock |
+| **Instruction Reordering** | Sequential consistency | Serialization via mutex |
+| **Scalability** | Only 2 threads | Unlimited threads |
+| **CPU Efficiency** | Busy-wait (wasted cycles) | OS blocking (efficient) |
+
+### When to Use Each
+
+**Peterson's Algorithm**:
+- Academic learning and theoretical understanding
+- Embedded systems with minimal OS
+- Educational demonstrations of synchronization principles
+- Theoretical proofs of correctness
+
+**Mutex (Production)**:
+- Real-world applications
+- Multi-threaded servers and services
+- Any application with 3+ threads
+- When performance and maintainability matter
+
+**C11 Atomics**:
+- Lock-free algorithms
+- Performance-critical code requiring precise control
+- When you understand memory ordering semantics
+- Not typically for simple mutual exclusion (use mutex instead)
+
+## Troubleshooting
+
 
 **Import errors:**
-- Make sure to run from the correct directory: `python src/main.py`
+- Make sure to run from the correct directory: `uv run src/main.py`
 
 ## References
 
 - Peterson, G. L. (1981). "Myths About the Mutual Exclusion Problem"
 - Dijkstra, E. W. (1965). "Solution of a problem in concurrent programming control"
 - Lamport, L. (1974). "A New Solution of Dijkstra's Concurrent Programming Problem"
+- POSIX Threads (pthreads) Programming: https://computing.llnl.gov/tutorials/pthreads/
+- The Linux Programming Interface: Michael Kerrisk (2010)
+- C++ Concurrency in Action: Anthony Williams (2nd Edition, 2019)
